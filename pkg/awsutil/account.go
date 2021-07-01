@@ -62,6 +62,9 @@ func NewAccount(creds Credentials, endpoints config.CustomEndpoints) (*Account, 
 			aliases = append(aliases, *alias)
 		}
 	}
+	if len(aliases) == 0 {
+		aliases = append(aliases, "no-alias-set-unsafe-ok")
+	}
 
 	account.id = *identityOutput.Account
 	account.aliases = aliases
