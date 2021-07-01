@@ -25,6 +25,7 @@ type Item struct {
 
 	State  ItemState
 	Reason string
+	Code   string
 
 	Region *Region
 	Type   string

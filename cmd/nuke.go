@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"time"
 
 	"github.com/rebuy-de/aws-nuke/v2/pkg/awsutil"
@@ -97,16 +98,54 @@ func (n *Nuke) Run() error {
 				logrus.Errorf("There are resources in failed state, but none are ready for deletion, anymore.")
 				fmt.Println()
 
+				// Not all failures are created equal, some are true "errors" where as others are "warnings"
+				//  - "AccessDenied" is the most canonical example of this would be a  error, which is indicative
+				//    of user input error, but in certain circumstances is an acceptable failure state.
+				//  - "DeleteConflict" in this context implies either a bug in the system or more likely that it is
+				//    attached to an object which we do not have the correct permissions to mutate or remove, so
+				//    in light of that error it is also an error which we can treat as a "warning"
+				//
+				// This is likely ot happen in a corporate environment where full permissions are not handed out
+				// freely and there may be protected monitoring objects which we are not able to modify. One possible
+				// solution is to filter these out explicitly but it is a fairly brittle approach to play cat and mouse
+				// with different teams, so instead we can explicitly not fail on these kinds of errors.
+				//
+				// It would be nice to make this a user configurable parameter, perhaps eliding the default ignore
+				// errors, since this may be specific to my use case.
+				ignoredFailures := []string{"AccessDenied", "DeleteConflict", "AccessDeniedException"}
+
+				fatalFailureCount := 0
+				ignoredFailureCount := 0
 				for _, item := range n.items {
 					if item.State != ItemStateFailed {
 						continue
 					}
 
+					ignored := false
+					for _, ignoredFailure := range ignoredFailures {
+						if item.Code == ignoredFailure {
+							ignored = true
+						}
+					}
+
 					item.Print()
-					logrus.Error(item.Reason)
+					if ignored {
+						ignoredFailureCount += 1
+						logrus.Warn(item.Code, item.Reason)
+					} else {
+						fatalFailureCount += 2
+						logrus.Error(item.Reason)
+					}
 				}
 
-				return fmt.Errorf("failed")
+				// Warning failures are reported as errors but should not be failures
+				if fatalFailureCount > 0 {
+					logrus.Errorf("There were %d fatal errors\n", fatalFailureCount)
+					return fmt.Errorf("failed")
+				} else {
+					logrus.Warnf("There were %d ignored errors\n", ignoredFailureCount)
+					break
+				}
 			}
 
 			failCount = failCount + 1
@@ -274,6 +313,11 @@ func (n *Nuke) HandleRemove(item *Item) {
 	if err != nil {
 		item.State = ItemStateFailed
 		item.Reason = err.Error()
+
+		if aerr, ok := err.(awserr.Error); ok {
+			item.Code = aerr.Code()
+		}
+
 		return
 	}
 
