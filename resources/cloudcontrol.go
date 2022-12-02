@@ -35,6 +35,9 @@ func init() {
 	registerCloudControl("AWS::NetworkFirewall::Firewall")
 	registerCloudControl("AWS::NetworkFirewall::FirewallPolicy")
 	registerCloudControl("AWS::NetworkFirewall::RuleGroup")
+	// TODO figure out out which approach is better
+	//registerCloudControl("AWS::EC2::IPAM")
+	//registerCloudControl("AWS::EC2::IPAMScope")
 }
 
 func NewListCloudControlResource(typeName string) func(*session.Session) ([]Resource, error) {
